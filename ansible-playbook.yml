@@ -1,0 +1,52 @@
+- hosts: all
+  become: true
+  tasks:
+    - name: "Update Repository cache"
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+        force_apt_get: true
+
+    - name: installing javajre and jdk PKG
+      package:
+        name: "{{ item }}"
+      with_items:
+        - default-jdk
+        - default-jre
+
+    - name: downloading resources
+      unarchive:
+        src: https://packages.confluent.io/archive/7.2/confluent-7.2.2.tar.gz
+        dest: /home/ubuntu/
+        remote_src: yes
+
+    - name: set env variables
+      blockinfile:
+        dest: /etc/profile
+        block: |
+          export CONFLUENT_HOME=/home/ubuntu/confluent-7.2.2
+          export PATH=$CONFLUENT_HOME/bin:/bin:/usr/bin
+        backup: yes
+    
+    - name: echo
+      shell:
+        "echo $CONFLUENT_HOME $PATH"
+
+    - name: source and confluent installation
+      shell:
+        "{{ item }}"
+      ignore_errors: true
+      register: result
+      args:
+        executable: /bin/bash
+        warn: no
+      with_items:
+        - source /etc/profile
+        - confluent local services status
+
+    - name: if failed
+      shell: 
+        "confluent local services start"
+      args:
+        warn: no
+      when: result is failed
