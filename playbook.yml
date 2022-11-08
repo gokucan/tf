@@ -1,0 +1,70 @@
+- hosts: all
+  become: true
+  vars_files:
+    - vars_ansible.yml
+
+  tasks:
+    - name: hostname updation
+      hostname:
+        name: "{{ inventory_name }}"
+
+    - name: hosts entry
+      blockinfile:
+        path: /etc/hosts
+        block: |
+          {{ item.ip }} {{ item.name }}
+      with_items: "{{ hosts_entry }}"
+    
+    - name: script
+      script: swap_area.sh
+
+    - name: "Update Repository cache"
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+        force_apt_get: true
+    
+    - name: add Repository
+      apt_repository:
+        repo: "{{ item }}"
+        state: present
+      with_items:
+        - deb [arch=amd64] https://packages.confluent.io/deb/7.3 stable main
+        - deb https://packages.confluent.io/clients/deb $(lsb_release -cs) main
+    
+    - name: installing javajre and jdk PKG
+      package:
+        name: "{{ item }}"
+      with_items:
+        - default-jdk
+        - default-jre
+        - "{{ confluent_pkg }}"
+
+    - name: Configuration management
+      copy:
+        src: "{{ item }}"
+        dest: /etc/kafka/
+        owner: root
+        group: root
+        mode: '0644'
+        backup: yes
+      with_items:
+        - "{{ zookeeper_conf }}"
+        - "{{ kafka_conf }}"
+
+    - name: services
+      service:
+        name: "{{ service_zookeeper }}"
+        enabled: yes
+        state: started
+    
+    - name: port check
+      wait_for:
+        port: "{{ zookeeper_port }}"
+        delay: 20
+    
+    - name: "{{ service_kafka }}"
+      service:
+        name: "{{ service_kafka }}"
+        enabled: yes
+        state: started
